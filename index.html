@@ -6,10 +6,10 @@
   <title>XAU/USD</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     html, body { width:100%; height:100%; background:#0b0f14; overflow:hidden; font-family:'Share Tech Mono',monospace; }
 
-    /* BAR */
+    /* ── BAR ── */
     .bar {
       position:fixed; top:0; left:0; right:0; height:32px;
       background:#0b0f14; border-bottom:1px solid #1a2232;
@@ -17,8 +17,10 @@
       padding:0 14px; z-index:200;
     }
     .bar.light { background:#f0f0f0; border-color:#ddd; }
+
     .clock { font-size:12px; color:#f0b429; letter-spacing:1.5px; }
     .bar.light .clock { color:#b07d00; }
+
     .controls { display:flex; gap:3px; align-items:center; }
 
     .btn {
@@ -30,14 +32,13 @@
     .bar.light .btn { border-color:#ccc; color:#888; }
     .btn:hover  { border-color:#f0b429; color:#f0b429; }
     .btn.active { border-color:#f0b429; color:#f0b429; background:rgba(240,180,41,.1); }
+
     .sep { width:1px; height:16px; background:#1a2232; margin:0 4px; }
     .bar.light .sep { background:#ddd; }
 
-    /* saving indicator */
     .save-dot {
       width:6px; height:6px; border-radius:50%;
-      background:#556070; transition:background .3s;
-      flex-shrink:0;
+      background:#2a3a4a; transition:background .3s; flex-shrink:0;
     }
     .save-dot.saving { background:#f0b429; box-shadow:0 0 5px #f0b429; }
     .save-dot.saved  { background:#26a69a; box-shadow:0 0 5px #26a69a; }
@@ -50,7 +51,7 @@
     .fs-icon::before { top:0; left:0; border-width:1.5px 0 0 1.5px; }
     .fs-icon::after  { bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
 
-    /* GRID */
+    /* ── GRID ── */
     .grid {
       position:fixed; top:32px; left:0; right:0; bottom:0;
       display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr);
@@ -58,6 +59,7 @@
     }
     body.fullscreen .bar  { display:none; }
     body.fullscreen .grid { top:0; }
+
     .cell { position:relative; background:#131722; overflow:hidden; }
     .grid.light .cell { background:#ffffff; }
     .cell iframe {
@@ -66,7 +68,7 @@
       border:none; display:block;
     }
 
-    /* INDICATOR PANEL */
+    /* ── INDICATOR PANEL ── */
     .ind-panel {
       position:fixed; top:42px; right:10px; width:210px;
       background:#0f1419; border:1px solid #1a2232; border-radius:4px;
@@ -140,8 +142,8 @@
 <div class="bar" id="bar">
   <span class="clock" id="clk">--:--:-- AST</span>
   <div class="controls">
-    <button class="btn" id="dark-btn"  data-theme="dark">Dark</button>
-    <button class="btn" id="light-btn" data-theme="light">Light</button>
+    <button class="btn" id="dark-btn">Dark</button>
+    <button class="btn" id="light-btn">Light</button>
     <div class="sep"></div>
     <button class="btn" id="toolbar-btn">Toolbar</button>
     <button class="btn" id="legend-btn">Legend</button>
@@ -154,7 +156,6 @@
   </div>
 </div>
 
-<!-- INDICATOR PANEL -->
 <div class="ind-panel" id="ind-panel">
   <div class="panel-head">
     <span class="panel-title">INDICATORS</span>
@@ -169,7 +170,7 @@
 <div class="grid" id="grid"></div>
 
 <script>
-  /* ══ INDICATOR DEFINITIONS ══ */
+  /* ── CONSTANTS ── */
   const INDICATORS = [
     { id:'sma',      label:'SMA (20)',        group:'Trend',      study:'MASimple@tv-basicstudies' },
     { id:'ema',      label:'EMA (20)',        group:'Trend',      study:'MAExp@tv-basicstudies' },
@@ -198,97 +199,81 @@
     { sym:'FOREXCOM:XAUUSD', iv:'W'   },
   ];
 
-  /* ══ JSONBIN ══ */
   const BIN_ID  = '69bb82e8b7ec241ddc805616';
   const API_KEY = '$2a$10$HWO87P5U7tC328dcahcMg.va6krOTvvz9rylup0rM9ChckkhWQQgm';
   const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
-  const HEADERS = { 'Content-Type': 'application/json', 'X-Master-Key': API_KEY };
+  const HDRS    = { 'Content-Type':'application/json', 'X-Master-Key':API_KEY };
 
-  /* ══ STATE ══ */
+  /* ── STATE ── */
   let theme       = 'dark';
   let showToolbar = true;
   let showLegend  = false;
-  let active      = new Set();   // active indicator IDs
+  let active      = new Set();
+  let saveTimer   = null;
 
-  /* ══ SAVE DOT ══ */
+  /* ── CLOCK ── */
+  (function tick() {
+    const b = new Date(Date.now() + 3 * 3600000);
+    const p = n => String(n).padStart(2,'0');
+    document.getElementById('clk').textContent =
+      `${p(b.getUTCHours())}:${p(b.getUTCMinutes())}:${p(b.getUTCSeconds())} AST`;
+    setTimeout(tick, 1000);
+  })();
+
+  /* ── SAVE DOT ── */
   function dotState(s) {
-    const d = document.getElementById('save-dot');
-    d.className = 'save-dot' + (s ? ' ' + s : '');
+    document.getElementById('save-dot').className = 'save-dot' + (s ? ' '+s : '');
   }
 
-  /* ══ LOAD from JSONBin (with localStorage fallback) ══ */
+  /* ── LOAD from JSONBin → localStorage fallback ── */
   async function loadSettings() {
     try {
-      const res  = await fetch(BIN_URL + '/latest', { headers: HEADERS });
+      const res  = await fetch(BIN_URL + '/latest', { headers: HDRS });
       const json = await res.json();
-      const d    = json.record;
-      theme       = d.theme       ?? 'dark';
-      showToolbar = d.showToolbar ?? true;
-      showLegend  = d.showLegend  ?? false;
-      active      = new Set(Array.isArray(d.active) ? d.active : []);
-      // mirror to localStorage as backup
-      try { localStorage.setItem('xau_dash', JSON.stringify(d)); } catch(e) {}
-      dotState('saved');
-    } catch(e) {
-      // offline fallback
+      applyRecord(json.record);
+      // mirror locally for offline use
+      try { localStorage.setItem('xau_dash', JSON.stringify(json.record)); } catch(_) {}
+    } catch(_) {
       try {
         const raw = localStorage.getItem('xau_dash');
-        if (raw) {
-          const d = JSON.parse(raw);
-          theme       = d.theme       ?? 'dark';
-          showToolbar = d.showToolbar ?? true;
-          showLegend  = d.showLegend  ?? false;
-          active      = new Set(Array.isArray(d.active) ? d.active : []);
-        }
-      } catch(e2) {}
+        if (raw) applyRecord(JSON.parse(raw));
+      } catch(_) {}
     }
   }
 
-  /* ══ SAVE to JSONBin (debounced) ══ */
-  let saveTimer = null;
+  function applyRecord(d) {
+    if (!d) return;
+    theme       = d.theme       ?? 'dark';
+    showToolbar = d.showToolbar ?? true;
+    showLegend  = d.showLegend  ?? false;
+    active      = new Set(Array.isArray(d.active) ? d.active : []);
+  }
+
+  /* ── SAVE to JSONBin (debounced 800ms, snapshot captured inside timeout) ── */
   function saveSettings() {
-    const data = {
-      theme,
-      showToolbar,
-      showLegend,
-      active: [...active],   // ← indicators included
-    };
-    // instant local backup
-    try { localStorage.setItem('xau_dash', JSON.stringify(data)); } catch(e) {}
-    // remote save debounced 800ms
     dotState('saving');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
+      // snapshot state at save time (not at call time)
+      const data = { theme, showToolbar, showLegend, active: [...active] };
+      try { localStorage.setItem('xau_dash', JSON.stringify(data)); } catch(_) {}
       try {
-        await fetch(BIN_URL, {
-          method:  'PUT',
-          headers: HEADERS,
-          body:    JSON.stringify(data),
-        });
+        await fetch(BIN_URL, { method:'PUT', headers:HDRS, body:JSON.stringify(data) });
         dotState('saved');
         setTimeout(() => dotState(''), 2000);
-      } catch(e) {
-        dotState('');
+      } catch(_) {
+        dotState(''); // failed silently — local copy still saved
       }
     }, 800);
   }
 
-  /* ══ CLOCK (Bahrain UTC+3) ══ */
-  function tick() {
-    const bhr = new Date(Date.now() + 3 * 3600000);
-    const p   = n => String(n).padStart(2,'0');
-    document.getElementById('clk').textContent =
-      `${p(bhr.getUTCHours())}:${p(bhr.getUTCMinutes())}:${p(bhr.getUTCSeconds())} AST`;
-  }
-  tick(); setInterval(tick, 1000);
-
-  /* ══ URL ══ */
-  function makeUrl(sym, iv, th) {
-    const dark = th === 'dark';
-    const params = {
+  /* ── BUILD CHART URL ── */
+  function makeUrl(sym, iv) {
+    const dark = theme === 'dark';
+    const p = new URLSearchParams({
       symbol:              sym,
       interval:            iv,
-      theme:               th,
+      theme:               theme,
       style:               '1',
       locale:              'en',
       toolbar_bg:          dark ? '#131722' : '#ffffff',
@@ -298,21 +283,27 @@
       hide_top_toolbar:    showToolbar ? 'false' : 'true',
       hide_side_toolbar:   'true',
       hide_legend:         showLegend  ? 'false' : 'true',
-      withdateranges:      'false',
       backgroundColor:     dark ? 'rgba(19,23,34,1)' : 'rgba(255,255,255,1)',
       gridColor:           dark ? 'rgba(30,40,55,0.9)' : 'rgba(210,220,230,0.9)',
-    };
-    [...active].forEach((id, i) => {
-      const ind = INDICATORS.find(x => x.id === id);
-      if (ind) params[`studies[${i}]`] = ind.study;
     });
-    return `https://www.tradingview.com/widgetembed/?${new URLSearchParams(params)}`;
+
+    // Remove default volume pane using correct append() — avoids bracket-encoding bug
+    p.append('studies_overrides', 'volume.volume.color.0=rgba(0,0,0,0)');
+    p.append('studies_overrides', 'volume.volume.color.1=rgba(0,0,0,0)');
+    p.append('studies_overrides', 'volume.volume ma.color=rgba(0,0,0,0)');
+
+    // Append each active study as a separate repeated key
+    active.forEach(id => {
+      const ind = INDICATORS.find(x => x.id === id);
+      if (ind) p.append('studies', ind.study);
+    });
+
+    return `https://www.tradingview.com/widgetembed/?${p}`;
   }
 
-  /* ══ APPLY UI ══ */
-  function applyUi() {
-    const bar = document.getElementById('bar');
-    bar.className = 'bar' + (theme === 'light' ? ' light' : '');
+  /* ── SYNC UI (buttons + bar class) ── */
+  function syncUi() {
+    document.getElementById('bar').className        = 'bar' + (theme === 'light' ? ' light' : '');
     document.getElementById('dark-btn').classList.toggle('active',    theme === 'dark');
     document.getElementById('light-btn').classList.toggle('active',   theme === 'light');
     document.getElementById('toolbar-btn').classList.toggle('active', showToolbar);
@@ -320,7 +311,7 @@
     document.getElementById('ind-panel').classList.toggle('light',    theme === 'light');
   }
 
-  /* ══ BUILD INDICATOR PANEL ══ */
+  /* ── BUILD INDICATOR PANEL (called once on init; rebuilds on loadSettings) ── */
   function buildPanel() {
     const body   = document.getElementById('panel-body');
     const groups = [...new Set(INDICATORS.map(i => i.group))];
@@ -328,7 +319,7 @@
       <div class="ind-group">
         <div class="group-label">${grp}</div>
         ${INDICATORS.filter(i => i.group === grp).map(ind => `
-          <div class="ind-row${active.has(ind.id) ? ' on' : ''}" data-id="${ind.id}">
+          <div class="ind-row${active.has(ind.id)?' on':''}" data-id="${ind.id}">
             <div class="pill"></div>
             <span class="ind-label">${ind.label}</span>
           </div>`).join('')}
@@ -343,31 +334,34 @@
     });
   }
 
-  /* ══ RENDER CHARTS ══ */
-  function render() {
-    applyUi();
-    buildPanel();
-    saveSettings();
+  /* ── RENDER CHARTS ── */
+  function renderCharts() {
     const grid = document.getElementById('grid');
     grid.className = 'grid' + (theme === 'light' ? ' light' : '');
-    grid.innerHTML = CHARTS.map(c => `
-      <div class="cell">
-        <iframe src="${makeUrl(c.sym, c.iv, theme)}"
-          allowtransparency="false" scrolling="no" frameborder="0"></iframe>
-      </div>`).join('');
+    grid.innerHTML = CHARTS.map(c =>
+      `<div class="cell"><iframe src="${makeUrl(c.sym, c.iv)}"
+        allowtransparency="false" scrolling="no" frameborder="0"></iframe></div>`
+    ).join('');
   }
 
-  /* ══ BUTTONS ══ */
-  document.getElementById('dark-btn').addEventListener('click',    () => { theme = 'dark';           render(); });
-  document.getElementById('light-btn').addEventListener('click',   () => { theme = 'light';          render(); });
-  document.getElementById('toolbar-btn').addEventListener('click', () => { showToolbar = !showToolbar; render(); });
-  document.getElementById('legend-btn').addEventListener('click',  () => { showLegend  = !showLegend;  render(); });
+  /* ── FULL REFRESH (UI + charts + save) ── */
+  function refresh() {
+    syncUi();
+    renderCharts();
+    saveSettings();
+  }
+
+  /* ── EVENT LISTENERS ── */
+  document.getElementById('dark-btn').addEventListener('click',    () => { theme = 'dark';              refresh(); });
+  document.getElementById('light-btn').addEventListener('click',   () => { theme = 'light';             refresh(); });
+  document.getElementById('toolbar-btn').addEventListener('click', () => { showToolbar = !showToolbar;  refresh(); });
+  document.getElementById('legend-btn').addEventListener('click',  () => { showLegend  = !showLegend;   refresh(); });
 
   document.getElementById('ind-btn').addEventListener('click',   () => document.getElementById('ind-panel').classList.toggle('open'));
   document.getElementById('ind-close').addEventListener('click', () => document.getElementById('ind-panel').classList.remove('open'));
   document.getElementById('apply-btn').addEventListener('click', () => {
-    render();
     document.getElementById('ind-panel').classList.remove('open');
+    refresh(); // applies active indicators to all charts + saves
   });
 
   document.getElementById('fs-btn').addEventListener('click', () => {
@@ -377,13 +371,16 @@
   document.addEventListener('fullscreenchange', () => {
     const on = !!document.fullscreenElement;
     document.body.classList.toggle('fullscreen', on);
-    document.getElementById('fs-btn').innerHTML = `<span class="fs-icon"></span>${on ? 'Exit' : 'Full'}`;
+    document.getElementById('fs-btn').innerHTML = `<span class="fs-icon"></span>${on?'Exit':'Full'}`;
   });
 
-  /* ══ INIT ══ */
+  /* ── INIT ── */
   (async () => {
-    await loadSettings();
-    render();
+    await loadSettings(); // fetch from JSONBin (or localStorage fallback)
+    syncUi();             // apply loaded state to buttons
+    buildPanel();         // build indicator toggles with correct on/off state
+    renderCharts();       // render all 6 charts with loaded settings
+    // no saveSettings() here — nothing changed, don't write on startup
   })();
 </script>
 </body>
