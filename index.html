@@ -7,79 +7,132 @@
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width:100%; height:100%; background:#0b0f14; overflow:hidden; font-family:'Share Tech Mono',monospace; }
 
-    html, body {
-      width: 100%; height: 100%;
-      background: #0b0f14;
-      overflow: hidden;
-      font-family: 'Share Tech Mono', monospace;
-    }
-
+    /* BAR */
     .bar {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      height: 32px;
-      background: #0b0f14;
-      border-bottom: 1px solid #1a2232;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 14px;
-      z-index: 200;
+      position:fixed; top:0; left:0; right:0; height:32px;
+      background:#0b0f14; border-bottom:1px solid #1a2232;
+      display:flex; align-items:center; justify-content:space-between;
+      padding:0 14px; z-index:200;
     }
-    .bar.light { background: #f0f0f0; border-color: #ddd; }
-    .clock { font-size: 12px; color: #f0b429; letter-spacing: 1.5px; }
-    .bar.light .clock { color: #b07d00; }
-    .controls { display: flex; gap: 3px; align-items: center; }
+    .bar.light { background:#f0f0f0; border-color:#ddd; }
+    .clock { font-size:12px; color:#f0b429; letter-spacing:1.5px; }
+    .bar.light .clock { color:#b07d00; }
+    .controls { display:flex; gap:3px; align-items:center; }
 
     .btn {
-      background: transparent;
-      border: 1px solid #243040;
-      color: #556070;
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 10px;
-      padding: 2px 10px;
-      border-radius: 2px;
-      cursor: pointer;
-      transition: all .12s;
-      letter-spacing: .5px;
-      display: flex; align-items: center; gap: 5px;
-      white-space: nowrap;
+      background:transparent; border:1px solid #243040; color:#556070;
+      font-family:'Share Tech Mono',monospace; font-size:10px; padding:2px 10px;
+      border-radius:2px; cursor:pointer; transition:all .12s; letter-spacing:.5px;
+      display:flex; align-items:center; gap:5px; white-space:nowrap;
     }
-    .bar.light .btn { border-color: #ccc; color: #888; }
-    .btn:hover  { border-color: #f0b429; color: #f0b429; }
-    .btn.active { border-color: #f0b429; color: #f0b429; background: rgba(240,180,41,.1); }
+    .bar.light .btn { border-color:#ccc; color:#888; }
+    .btn:hover  { border-color:#f0b429; color:#f0b429; }
+    .btn.active { border-color:#f0b429; color:#f0b429; background:rgba(240,180,41,.1); }
+    .sep { width:1px; height:16px; background:#1a2232; margin:0 4px; }
+    .bar.light .sep { background:#ddd; }
 
-    .sep { width: 1px; height: 16px; background: #1a2232; margin: 0 4px; }
-    .bar.light .sep { background: #ddd; }
+    /* saving indicator */
+    .save-dot {
+      width:6px; height:6px; border-radius:50%;
+      background:#556070; transition:background .3s;
+      flex-shrink:0;
+    }
+    .save-dot.saving { background:#f0b429; box-shadow:0 0 5px #f0b429; }
+    .save-dot.saved  { background:#26a69a; box-shadow:0 0 5px #26a69a; }
 
-    .fs-icon { width: 11px; height: 11px; position: relative; flex-shrink: 0; }
+    .fs-icon { width:11px; height:11px; position:relative; flex-shrink:0; }
     .fs-icon::before, .fs-icon::after {
-      content: ''; position: absolute; border-color: currentColor;
-      border-style: solid; width: 4px; height: 4px;
+      content:''; position:absolute; border-color:currentColor;
+      border-style:solid; width:4px; height:4px;
     }
-    .fs-icon::before { top:0; left:0; border-width: 1.5px 0 0 1.5px; }
-    .fs-icon::after  { bottom:0; right:0; border-width: 0 1.5px 1.5px 0; }
+    .fs-icon::before { top:0; left:0; border-width:1.5px 0 0 1.5px; }
+    .fs-icon::after  { bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
 
+    /* GRID */
     .grid {
-      position: fixed;
-      top: 32px; left: 0; right: 0; bottom: 0;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: repeat(2, 1fr);
-      gap: 1px;
-      background: #1a2232;
+      position:fixed; top:32px; left:0; right:0; bottom:0;
+      display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr);
+      gap:1px; background:#1a2232;
     }
-    body.fullscreen .bar  { display: none; }
-    body.fullscreen .grid { top: 0; }
-
-    .cell { position: relative; background: #131722; overflow: hidden; }
-    .grid.light .cell { background: #ffffff; }
+    body.fullscreen .bar  { display:none; }
+    body.fullscreen .grid { top:0; }
+    .cell { position:relative; background:#131722; overflow:hidden; }
+    .grid.light .cell { background:#ffffff; }
     .cell iframe {
-      position: absolute; top: 0; left: -50px;
-      width: calc(100% + 50px); height: 100%;
-      border: none; display: block;
+      position:absolute; top:0; left:-50px;
+      width:calc(100% + 50px); height:100%;
+      border:none; display:block;
     }
+
+    /* INDICATOR PANEL */
+    .ind-panel {
+      position:fixed; top:42px; right:10px; width:210px;
+      background:#0f1419; border:1px solid #1a2232; border-radius:4px;
+      z-index:300; box-shadow:0 8px 40px rgba(0,0,0,.7);
+      display:none; flex-direction:column; overflow:hidden;
+    }
+    .ind-panel.open  { display:flex; }
+    .ind-panel.light { background:#fafafa; border-color:#ddd; }
+
+    .panel-head {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:8px 12px; border-bottom:1px solid #1a2232; flex-shrink:0;
+    }
+    .ind-panel.light .panel-head { border-color:#eee; }
+    .panel-title { font-size:10px; color:#556070; letter-spacing:1.5px; }
+    .panel-close { cursor:pointer; color:#556070; font-size:15px; line-height:1; transition:color .1s; }
+    .panel-close:hover { color:#f0b429; }
+
+    .panel-body { overflow-y:auto; }
+    .panel-body::-webkit-scrollbar { width:3px; }
+    .panel-body::-webkit-scrollbar-thumb { background:#1a2232; border-radius:2px; }
+
+    .ind-group { border-bottom:1px solid #1a2232; }
+    .ind-panel.light .ind-group { border-color:#eee; }
+    .ind-group:last-child { border-bottom:none; }
+
+    .group-label {
+      font-size:9px; color:#2a3a4a; letter-spacing:1.5px;
+      padding:6px 12px 3px; text-transform:uppercase;
+    }
+    .ind-panel.light .group-label { color:#bbb; }
+
+    .ind-row {
+      display:flex; align-items:center; padding:6px 12px; gap:9px;
+      cursor:pointer; transition:background .1s;
+    }
+    .ind-row:hover { background:rgba(240,180,41,.04); }
+
+    .pill {
+      width:28px; height:14px; border-radius:7px;
+      background:#1a2232; position:relative; flex-shrink:0;
+      border:1px solid #243040; transition:background .15s, border-color .15s;
+    }
+    .ind-panel.light .pill { background:#ddd; border-color:#ccc; }
+    .ind-row.on .pill { background:rgba(240,180,41,.25); border-color:#f0b429; }
+    .pill::after {
+      content:''; position:absolute; top:1px; left:1px;
+      width:10px; height:10px; border-radius:50%; background:#3a4a5a;
+      transition:transform .15s, background .15s;
+    }
+    .ind-panel.light .pill::after { background:#bbb; }
+    .ind-row.on .pill::after { transform:translateX(14px); background:#f0b429; }
+
+    .ind-label { font-size:11px; color:#7a8a9a; flex:1; transition:color .12s; }
+    .ind-panel.light .ind-label { color:#666; }
+    .ind-row.on .ind-label { color:#e0c060; }
+
+    .panel-foot { padding:8px 12px; border-top:1px solid #1a2232; flex-shrink:0; }
+    .ind-panel.light .panel-foot { border-color:#eee; }
+    .apply-btn {
+      width:100%; padding:6px; background:rgba(240,180,41,.1);
+      border:1px solid #f0b429; color:#f0b429;
+      font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1px;
+      border-radius:2px; cursor:pointer; transition:background .12s;
+    }
+    .apply-btn:hover { background:rgba(240,180,41,.22); }
   </style>
 </head>
 <body>
@@ -87,19 +140,55 @@
 <div class="bar" id="bar">
   <span class="clock" id="clk">--:--:-- AST</span>
   <div class="controls">
-    <button class="btn" id="dark-btn"    data-theme="dark">Dark</button>
-    <button class="btn" id="light-btn"   data-theme="light">Light</button>
+    <button class="btn" id="dark-btn"  data-theme="dark">Dark</button>
+    <button class="btn" id="light-btn" data-theme="light">Light</button>
     <div class="sep"></div>
     <button class="btn" id="toolbar-btn">Toolbar</button>
     <button class="btn" id="legend-btn">Legend</button>
     <div class="sep"></div>
+    <button class="btn" id="ind-btn">⊞ Indicators</button>
+    <div class="sep"></div>
+    <div class="save-dot" id="save-dot" title="Sync status"></div>
+    <div class="sep"></div>
     <button class="btn" id="fs-btn"><span class="fs-icon"></span>Full</button>
+  </div>
+</div>
+
+<!-- INDICATOR PANEL -->
+<div class="ind-panel" id="ind-panel">
+  <div class="panel-head">
+    <span class="panel-title">INDICATORS</span>
+    <span class="panel-close" id="ind-close">✕</span>
+  </div>
+  <div class="panel-body" id="panel-body"></div>
+  <div class="panel-foot">
+    <button class="apply-btn" id="apply-btn">▶ APPLY TO ALL CHARTS</button>
   </div>
 </div>
 
 <div class="grid" id="grid"></div>
 
 <script>
+  /* ══ INDICATOR DEFINITIONS ══ */
+  const INDICATORS = [
+    { id:'sma',      label:'SMA (20)',        group:'Trend',      study:'MASimple@tv-basicstudies' },
+    { id:'ema',      label:'EMA (20)',        group:'Trend',      study:'MAExp@tv-basicstudies' },
+    { id:'wma',      label:'WMA (20)',        group:'Trend',      study:'MAWeighted@tv-basicstudies' },
+    { id:'bb',       label:'Bollinger Bands', group:'Trend',      study:'BB@tv-basicstudies' },
+    { id:'psar',     label:'Parabolic SAR',   group:'Trend',      study:'PSAR@tv-basicstudies' },
+    { id:'ichimoku', label:'Ichimoku Cloud',  group:'Trend',      study:'IchimokuCloud@tv-basicstudies' },
+    { id:'rsi',      label:'RSI (14)',        group:'Momentum',   study:'RSI@tv-basicstudies' },
+    { id:'macd',     label:'MACD',           group:'Momentum',   study:'MACD@tv-basicstudies' },
+    { id:'stoch',    label:'Stochastic',      group:'Momentum',   study:'Stochastic@tv-basicstudies' },
+    { id:'cci',      label:'CCI (20)',        group:'Momentum',   study:'CCI@tv-basicstudies' },
+    { id:'williamr', label:'Williams %R',     group:'Momentum',   study:'WilliamR@tv-basicstudies' },
+    { id:'volume',   label:'Volume',          group:'Volume',     study:'Volume@tv-basicstudies' },
+    { id:'vwap',     label:'VWAP',           group:'Volume',     study:'VWAP@tv-basicstudies' },
+    { id:'obv',      label:'OBV',            group:'Volume',     study:'OBV@tv-basicstudies' },
+    { id:'atr',      label:'ATR (14)',        group:'Volatility', study:'ATR@tv-basicstudies' },
+    { id:'stddev',   label:'Std Deviation',   group:'Volatility', study:'StdDev@tv-basicstudies' },
+  ];
+
   const CHARTS = [
     { sym:'OANDA:XAUUSD',    iv:'60'  },
     { sym:'TVC:GOLD',        iv:'240' },
@@ -109,16 +198,25 @@
     { sym:'FOREXCOM:XAUUSD', iv:'W'   },
   ];
 
-  /* ── JSONBIN CONFIG ── */
+  /* ══ JSONBIN ══ */
   const BIN_ID  = '69bb82e8b7ec241ddc805616';
   const API_KEY = '$2a$10$HWO87P5U7tC328dcahcMg.va6krOTvvz9rylup0rM9ChckkhWQQgm';
   const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
   const HEADERS = { 'Content-Type': 'application/json', 'X-Master-Key': API_KEY };
 
+  /* ══ STATE ══ */
   let theme       = 'dark';
   let showToolbar = true;
   let showLegend  = false;
+  let active      = new Set();   // active indicator IDs
 
+  /* ══ SAVE DOT ══ */
+  function dotState(s) {
+    const d = document.getElementById('save-dot');
+    d.className = 'save-dot' + (s ? ' ' + s : '');
+  }
+
+  /* ══ LOAD from JSONBin (with localStorage fallback) ══ */
   async function loadSettings() {
     try {
       const res  = await fetch(BIN_URL + '/latest', { headers: HEADERS });
@@ -127,34 +225,55 @@
       theme       = d.theme       ?? 'dark';
       showToolbar = d.showToolbar ?? true;
       showLegend  = d.showLegend  ?? false;
+      active      = new Set(Array.isArray(d.active) ? d.active : []);
+      // mirror to localStorage as backup
+      try { localStorage.setItem('xau_dash', JSON.stringify(d)); } catch(e) {}
+      dotState('saved');
     } catch(e) {
-      // fallback to localStorage if offline
+      // offline fallback
       try {
         const raw = localStorage.getItem('xau_dash');
-        if (raw) { const d = JSON.parse(raw); theme = d.theme ?? 'dark'; showToolbar = d.showToolbar ?? true; showLegend = d.showLegend ?? false; }
+        if (raw) {
+          const d = JSON.parse(raw);
+          theme       = d.theme       ?? 'dark';
+          showToolbar = d.showToolbar ?? true;
+          showLegend  = d.showLegend  ?? false;
+          active      = new Set(Array.isArray(d.active) ? d.active : []);
+        }
       } catch(e2) {}
     }
   }
 
+  /* ══ SAVE to JSONBin (debounced) ══ */
   let saveTimer = null;
   function saveSettings() {
-    const data = { theme, showToolbar, showLegend };
-    // always write to localStorage as instant local backup
+    const data = {
+      theme,
+      showToolbar,
+      showLegend,
+      active: [...active],   // ← indicators included
+    };
+    // instant local backup
     try { localStorage.setItem('xau_dash', JSON.stringify(data)); } catch(e) {}
-    // debounce remote save to avoid hammering API on rapid clicks
+    // remote save debounced 800ms
+    dotState('saving');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       try {
         await fetch(BIN_URL, {
-          method: 'PUT',
+          method:  'PUT',
           headers: HEADERS,
-          body: JSON.stringify(data),
+          body:    JSON.stringify(data),
         });
-      } catch(e) {}
-    }, 600);
+        dotState('saved');
+        setTimeout(() => dotState(''), 2000);
+      } catch(e) {
+        dotState('');
+      }
+    }, 800);
   }
 
-  /* ── CLOCK (Bahrain UTC+3) ── */
+  /* ══ CLOCK (Bahrain UTC+3) ══ */
   function tick() {
     const bhr = new Date(Date.now() + 3 * 3600000);
     const p   = n => String(n).padStart(2,'0');
@@ -163,10 +282,10 @@
   }
   tick(); setInterval(tick, 1000);
 
-  /* ── URL ── */
+  /* ══ URL ══ */
   function makeUrl(sym, iv, th) {
     const dark = th === 'dark';
-    const p = new URLSearchParams({
+    const params = {
       symbol:              sym,
       interval:            iv,
       theme:               th,
@@ -182,24 +301,52 @@
       withdateranges:      'false',
       backgroundColor:     dark ? 'rgba(19,23,34,1)' : 'rgba(255,255,255,1)',
       gridColor:           dark ? 'rgba(30,40,55,0.9)' : 'rgba(210,220,230,0.9)',
+    };
+    [...active].forEach((id, i) => {
+      const ind = INDICATORS.find(x => x.id === id);
+      if (ind) params[`studies[${i}]`] = ind.study;
     });
-    return `https://www.tradingview.com/widgetembed/?${p}`;
+    return `https://www.tradingview.com/widgetembed/?${new URLSearchParams(params)}`;
   }
 
-  /* ── APPLY UI STATE (button highlights + bar class) ── */
+  /* ══ APPLY UI ══ */
   function applyUi() {
     const bar = document.getElementById('bar');
     bar.className = 'bar' + (theme === 'light' ? ' light' : '');
-
     document.getElementById('dark-btn').classList.toggle('active',    theme === 'dark');
     document.getElementById('light-btn').classList.toggle('active',   theme === 'light');
     document.getElementById('toolbar-btn').classList.toggle('active', showToolbar);
     document.getElementById('legend-btn').classList.toggle('active',  showLegend);
+    document.getElementById('ind-panel').classList.toggle('light',    theme === 'light');
   }
 
-  /* ── RENDER CHARTS ── */
+  /* ══ BUILD INDICATOR PANEL ══ */
+  function buildPanel() {
+    const body   = document.getElementById('panel-body');
+    const groups = [...new Set(INDICATORS.map(i => i.group))];
+    body.innerHTML = groups.map(grp => `
+      <div class="ind-group">
+        <div class="group-label">${grp}</div>
+        ${INDICATORS.filter(i => i.group === grp).map(ind => `
+          <div class="ind-row${active.has(ind.id) ? ' on' : ''}" data-id="${ind.id}">
+            <div class="pill"></div>
+            <span class="ind-label">${ind.label}</span>
+          </div>`).join('')}
+      </div>`).join('');
+
+    body.querySelectorAll('.ind-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const id = row.dataset.id;
+        if (active.has(id)) { active.delete(id); row.classList.remove('on'); }
+        else                 { active.add(id);    row.classList.add('on');    }
+      });
+    });
+  }
+
+  /* ══ RENDER CHARTS ══ */
   function render() {
     applyUi();
+    buildPanel();
     saveSettings();
     const grid = document.getElementById('grid');
     grid.className = 'grid' + (theme === 'light' ? ' light' : '');
@@ -210,25 +357,19 @@
       </div>`).join('');
   }
 
-  /* ── THEME ── */
-  document.getElementById('dark-btn').addEventListener('click', () => {
-    theme = 'dark'; render();
-  });
-  document.getElementById('light-btn').addEventListener('click', () => {
-    theme = 'light'; render();
+  /* ══ BUTTONS ══ */
+  document.getElementById('dark-btn').addEventListener('click',    () => { theme = 'dark';           render(); });
+  document.getElementById('light-btn').addEventListener('click',   () => { theme = 'light';          render(); });
+  document.getElementById('toolbar-btn').addEventListener('click', () => { showToolbar = !showToolbar; render(); });
+  document.getElementById('legend-btn').addEventListener('click',  () => { showLegend  = !showLegend;  render(); });
+
+  document.getElementById('ind-btn').addEventListener('click',   () => document.getElementById('ind-panel').classList.toggle('open'));
+  document.getElementById('ind-close').addEventListener('click', () => document.getElementById('ind-panel').classList.remove('open'));
+  document.getElementById('apply-btn').addEventListener('click', () => {
+    render();
+    document.getElementById('ind-panel').classList.remove('open');
   });
 
-  /* ── TOOLBAR ── */
-  document.getElementById('toolbar-btn').addEventListener('click', () => {
-    showToolbar = !showToolbar; render();
-  });
-
-  /* ── LEGEND ── */
-  document.getElementById('legend-btn').addEventListener('click', () => {
-    showLegend = !showLegend; render();
-  });
-
-  /* ── FULLSCREEN ── */
   document.getElementById('fs-btn').addEventListener('click', () => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
     else document.exitFullscreen();
@@ -236,11 +377,10 @@
   document.addEventListener('fullscreenchange', () => {
     const on = !!document.fullscreenElement;
     document.body.classList.toggle('fullscreen', on);
-    document.getElementById('fs-btn').innerHTML =
-      `<span class="fs-icon"></span>${on ? 'Exit' : 'Full'}`;
+    document.getElementById('fs-btn').innerHTML = `<span class="fs-icon"></span>${on ? 'Exit' : 'Full'}`;
   });
 
-  /* ── INIT ── */
+  /* ══ INIT ══ */
   (async () => {
     await loadSettings();
     render();
