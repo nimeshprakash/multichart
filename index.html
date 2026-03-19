@@ -109,24 +109,28 @@
     { sym:'FOREXCOM:XAUUSD', iv:'W'   },
   ];
 
-  /* ── PERSIST SETTINGS via URL hash ── */
+  /* ── PERSIST SETTINGS ── */
   function loadSettings() {
     try {
-      const hash = location.hash.slice(1);
-      if (hash) return JSON.parse(decodeURIComponent(hash));
+      const raw = localStorage.getItem('xau_dash');
+      if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    try {
+      const raw = sessionStorage.getItem('xau_dash');
+      if (raw) return JSON.parse(raw);
     } catch(e) {}
     return { theme: 'dark', showToolbar: true, showLegend: false };
   }
 
   function saveSettings() {
-    try {
-      location.replace('#' + encodeURIComponent(JSON.stringify({ theme, showToolbar, showLegend })));
-    } catch(e) {}
+    const data = JSON.stringify({ theme, showToolbar, showLegend });
+    try { localStorage.setItem('xau_dash', data); } catch(e) {}
+    try { sessionStorage.setItem('xau_dash', data); } catch(e) {}
   }
 
   /* ── LOAD SAVED STATE ── */
   const saved = loadSettings();
-  let theme       = saved.theme;
+  let theme       = saved.theme       ?? 'dark';
   let showToolbar = saved.showToolbar ?? true;
   let showLegend  = saved.showLegend  ?? false;
 
