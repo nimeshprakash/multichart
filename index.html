@@ -109,30 +109,50 @@
     { sym:'FOREXCOM:XAUUSD', iv:'W'   },
   ];
 
-  /* ── PERSIST SETTINGS ── */
-  function loadSettings() {
+  /* ── JSONBIN CONFIG ── */
+  const BIN_ID  = '69bb82e8b7ec241ddc805616';
+  const API_KEY = '$2a$10$HWO87P5U7tC328dcahcMg.va6krOTvvz9rylup0rM9ChckkhWQQgm';
+  const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+  const HEADERS = { 'Content-Type': 'application/json', 'X-Master-Key': API_KEY };
+
+  let theme       = 'dark';
+  let showToolbar = true;
+  let showLegend  = false;
+
+  async function loadSettings() {
     try {
-      const raw = localStorage.getItem('xau_dash');
-      if (raw) return JSON.parse(raw);
-    } catch(e) {}
-    try {
-      const raw = sessionStorage.getItem('xau_dash');
-      if (raw) return JSON.parse(raw);
-    } catch(e) {}
-    return { theme: 'dark', showToolbar: true, showLegend: false };
+      const res  = await fetch(BIN_URL + '/latest', { headers: HEADERS });
+      const json = await res.json();
+      const d    = json.record;
+      theme       = d.theme       ?? 'dark';
+      showToolbar = d.showToolbar ?? true;
+      showLegend  = d.showLegend  ?? false;
+    } catch(e) {
+      // fallback to localStorage if offline
+      try {
+        const raw = localStorage.getItem('xau_dash');
+        if (raw) { const d = JSON.parse(raw); theme = d.theme ?? 'dark'; showToolbar = d.showToolbar ?? true; showLegend = d.showLegend ?? false; }
+      } catch(e2) {}
+    }
   }
 
+  let saveTimer = null;
   function saveSettings() {
-    const data = JSON.stringify({ theme, showToolbar, showLegend });
-    try { localStorage.setItem('xau_dash', data); } catch(e) {}
-    try { sessionStorage.setItem('xau_dash', data); } catch(e) {}
+    const data = { theme, showToolbar, showLegend };
+    // always write to localStorage as instant local backup
+    try { localStorage.setItem('xau_dash', JSON.stringify(data)); } catch(e) {}
+    // debounce remote save to avoid hammering API on rapid clicks
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        await fetch(BIN_URL, {
+          method: 'PUT',
+          headers: HEADERS,
+          body: JSON.stringify(data),
+        });
+      } catch(e) {}
+    }, 600);
   }
-
-  /* ── LOAD SAVED STATE ── */
-  const saved = loadSettings();
-  let theme       = saved.theme       ?? 'dark';
-  let showToolbar = saved.showToolbar ?? true;
-  let showLegend  = saved.showLegend  ?? false;
 
   /* ── CLOCK (Bahrain UTC+3) ── */
   function tick() {
@@ -221,7 +241,10 @@
   });
 
   /* ── INIT ── */
-  render();
+  (async () => {
+    await loadSettings();
+    render();
+  })();
 </script>
 </body>
 </html>
