@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>XAU/USD</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
-  <script src="https://s3.tradingview.com/tv.js"></script>
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     html, body { width:100%; height:100%; background:#0b0f14; overflow:hidden; font-family:'Share Tech Mono',monospace; }
 
+    /* ── BAR ── */
     .bar {
       position:fixed; top:0; left:0; right:0; height:32px;
       background:#0b0f14; border-bottom:1px solid #1a2232;
@@ -48,6 +48,7 @@
     .fs-icon::before { top:0; left:0; border-width:1.5px 0 0 1.5px; }
     .fs-icon::after  { bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
 
+    /* ── GRID ── */
     .grid {
       position:fixed; top:32px; left:0; right:0; bottom:0;
       display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr);
@@ -56,19 +57,37 @@
     body.fullscreen .bar  { display:none; }
     body.fullscreen .grid { top:0; }
 
+    /* ── CELL ── */
     .cell { position:relative; background:#131722; overflow:hidden; }
     .grid.light .cell { background:#ffffff; }
 
-    /* TradingView widget container fills the cell */
-    .tv-wrap {
+    .cell iframe {
       position:absolute; inset:0;
-    }
-    .tv-wrap > div {
-      width:100% !important;
-      height:100% !important;
+      width:100%; height:100%;
+      border:none; display:block;
     }
 
-    /* INDICATOR PANEL */
+    /*
+      TOOLBAR MASK: a thin overlay that covers only the TradingView top toolbar row
+      (~36px tall). When .hide-toolbar is on the grid, this mask covers it.
+      The chart itself is nudged up so it fills the space.
+    */
+    .cell .toolbar-mask {
+      display:none;
+      position:absolute; top:0; left:0; right:0;
+      height:38px;
+      background:inherit;  /* matches cell bg */
+      z-index:10;
+      pointer-events:none;
+    }
+    .grid.hide-toolbar .cell .toolbar-mask { display:block; }
+    /* Shift iframe up to reclaim toolbar space */
+    .grid.hide-toolbar .cell iframe {
+      top:-38px;
+      height:calc(100% + 38px);
+    }
+
+    /* ── INDICATOR PANEL ── */
     .ind-panel {
       position:fixed; top:42px; right:10px; width:210px;
       background:#0f1419; border:1px solid #1a2232; border-radius:4px;
@@ -210,11 +229,11 @@
   var active      = new Set();
   var saveTimer   = null;
 
-  /* Load from localStorage immediately (sync) */
+  /* Restore from localStorage instantly */
   try {
-    var _raw = localStorage.getItem('xau_dash');
-    if (_raw) {
-      var _d = JSON.parse(_raw);
+    var _s = localStorage.getItem('xau_dash');
+    if (_s) {
+      var _d = JSON.parse(_s);
       theme       = _d.theme       != null ? _d.theme       : 'dark';
       showToolbar = _d.showToolbar != null ? _d.showToolbar : true;
       showLegend  = _d.showLegend  != null ? _d.showLegend  : false;
@@ -233,7 +252,7 @@
 
   /* ══ SAVE DOT ══ */
   function dotState(s) {
-    document.getElementById('save-dot').className = 'save-dot' + (s ? ' ' + s : '');
+    document.getElementById('save-dot').className = 'save-dot' + (s ? ' '+s : '');
   }
 
   /* ══ SAVE ══ */
@@ -250,7 +269,7 @@
     }, 800);
   }
 
-  /* ══ SYNC FROM CLOUD (non-blocking background fetch) ══ */
+  /* ══ SYNC FROM CLOUD (background, non-blocking) ══ */
   function syncFromCloud() {
     fetch(BIN_URL + '/latest', { headers:HDRS })
       .then(function(r) { return r.json(); })
@@ -264,93 +283,97 @@
         try { localStorage.setItem('xau_dash', JSON.stringify(d)); } catch(e) {}
         syncUi();
         buildPanel();
-        renderCharts();
+        rebuildCharts();  // only rebuild on initial cloud load
       })
       .catch(function() {});
   }
 
-  /* ══ RENDER CHARTS using TradingView Widget JS API ══ */
-  function renderCharts() {
-    var grid = document.getElementById('grid');
-    grid.className = 'grid' + (theme === 'light' ? ' light' : '');
+  /* ══ BUILD IFRAME URL ══ */
+  function makeUrl(sym, iv) {
+    var dark = theme === 'dark';
 
-    /* Collect active study strings */
-    var studyList = [];
+    // Collect active studies
+    var studyParts = [];
+    var i = 0;
     active.forEach(function(id) {
       var ind = INDICATORS.find(function(x) { return x.id === id; });
-      if (ind) studyList.push(ind.study);
+      if (ind) {
+        studyParts.push('studies[' + i + ']=' + encodeURIComponent(ind.study));
+        i++;
+      }
     });
 
-    /* Destroy old widgets and clear grid */
+    var parts = [
+      'symbol='           + encodeURIComponent(sym),
+      'interval='         + iv,
+      'theme='            + theme,
+      'style=1',
+      'locale=en',
+      'timezone=Asia/Bahrain',
+      'toolbar_bg='       + encodeURIComponent(dark ? '#131722' : '#ffffff'),
+      'enable_publishing=false',
+      'allow_symbol_change=false',
+      'save_image=false',
+      'hide_top_toolbar=false',     // always load with toolbar — CSS mask hides it if needed
+      'hide_side_toolbar=true',
+      'hide_legend='      + (showLegend ? 'false' : 'true'),
+      'backgroundColor='  + encodeURIComponent(dark ? 'rgba(19,23,34,1)' : 'rgba(255,255,255,1)'),
+      'gridColor='        + encodeURIComponent(dark ? 'rgba(30,40,55,0.9)' : 'rgba(210,220,230,0.9)'),
+      // Hide default volume via literal bracket params
+      'studies_overrides[volume.volume.color.0]=rgba(0,0,0,0)',
+      'studies_overrides[volume.volume.color.1]=rgba(0,0,0,0)',
+      'studies_overrides[volume.volume ma.color]=rgba(0,0,0,0)',
+    ].concat(studyParts);
+
+    return 'https://www.tradingview.com/widgetembed/?' + parts.join('&');
+  }
+
+  /* ══ BUILD CHARTS (full rebuild — only called on init, theme change, or indicator apply) ══ */
+  function rebuildCharts() {
+    var grid = document.getElementById('grid');
     grid.innerHTML = '';
 
     CHARTS.forEach(function(c, i) {
-      /* Create cell and named container div */
-      var cell   = document.createElement('div');
+      var cell = document.createElement('div');
       cell.className = 'cell';
 
-      var wrap   = document.createElement('div');
-      wrap.className = 'tv-wrap';
+      // Toolbar mask overlay (CSS hides toolbar without reloading iframe)
+      var mask = document.createElement('div');
+      mask.className = 'toolbar-mask';
+      mask.style.background = theme === 'dark' ? '#131722' : '#ffffff';
 
-      var contId = 'tv_chart_' + i;
-      var cont   = document.createElement('div');
-      cont.id    = contId;
-      cont.style.width  = '100%';
-      cont.style.height = '100%';
+      var iframe = document.createElement('iframe');
+      iframe.src = makeUrl(c.sym, c.iv);
+      iframe.setAttribute('allowtransparency', 'false');
+      iframe.setAttribute('scrolling', 'no');
+      iframe.setAttribute('frameborder', '0');
 
-      wrap.appendChild(cont);
-      cell.appendChild(wrap);
+      cell.appendChild(mask);
+      cell.appendChild(iframe);
       grid.appendChild(cell);
+    });
 
-      /* Build widget config */
-      var cfg = {
-        autosize:             true,
-        symbol:               c.sym,
-        interval:             c.iv,
-        timezone:             'Asia/Bahrain',
-        theme:                theme,
-        style:                '1',
-        locale:               'en',
-        toolbar_bg:           theme === 'dark' ? '#131722' : '#ffffff',
-        enable_publishing:    false,
-        allow_symbol_change:  false,
-        save_image:           false,
-        hide_side_toolbar:    true,
-        hide_legend:          !showLegend,
-        withdateranges:       false,
-        hide_top_toolbar:     !showToolbar,
-        container_id:         contId,
-        /* Disable volume by default */
-        disabled_features: [
-          'create_volume_indicator_by_default',
-          'volume_force_overlay',
-          'header_symbol_search',
-          'header_compare',
-        ],
-        enabled_features: [
-          'hide_last_na_study_output',
-        ],
-        /* Active studies */
-        studies: studyList,
-        studies_overrides: {
-          'volume.volume.color.0': 'rgba(0,0,0,0)',
-          'volume.volume.color.1': 'rgba(0,0,0,0)',
-        },
-        overrides: {
-          'mainSeriesProperties.candleStyle.upColor':   '#26a69a',
-          'mainSeriesProperties.candleStyle.downColor': '#ef5350',
-          'mainSeriesProperties.candleStyle.borderUpColor':   '#26a69a',
-          'mainSeriesProperties.candleStyle.borderDownColor': '#ef5350',
-          'mainSeriesProperties.candleStyle.wickUpColor':   '#26a69a',
-          'mainSeriesProperties.candleStyle.wickDownColor': '#ef5350',
-        },
-      };
+    // Apply grid-level classes
+    applyGridClasses();
+  }
 
-      new TradingView.widget(cfg);
+  /* ══ APPLY GRID CLASSES — toolbar/legend/theme WITHOUT rebuilding iframes ══ */
+  function applyGridClasses() {
+    var grid = document.getElementById('grid');
+    // theme
+    if (theme === 'light') grid.classList.add('light');
+    else                   grid.classList.remove('light');
+    // toolbar mask
+    if (!showToolbar) grid.classList.add('hide-toolbar');
+    else              grid.classList.remove('hide-toolbar');
+    // update mask bg color to match theme
+    var masks = grid.querySelectorAll('.toolbar-mask');
+    masks.forEach(function(m) {
+      m.style.background = theme === 'dark' ? '#131722' : '#ffffff';
     });
   }
 
-  /* ══ SYNC UI ══ */
+  /* ══ SYNC UI BUTTONS ══ */
   function syncUi() {
     document.getElementById('bar').className = 'bar' + (theme === 'light' ? ' light' : '');
     document.getElementById('dark-btn').classList.toggle('active',    theme === 'dark');
@@ -360,18 +383,17 @@
     document.getElementById('ind-panel').classList.toggle('light',    theme === 'light');
   }
 
-  /* ══ BUILD PANEL ══ */
+  /* ══ BUILD INDICATOR PANEL ══ */
   function buildPanel() {
     var body   = document.getElementById('panel-body');
     var groups = [];
-    INDICATORS.forEach(function(i) { if (groups.indexOf(i.group) < 0) groups.push(i.group); });
-
+    INDICATORS.forEach(function(ind) {
+      if (groups.indexOf(ind.group) < 0) groups.push(ind.group);
+    });
     body.innerHTML = groups.map(function(grp) {
-      var rows = INDICATORS.filter(function(i) { return i.group === grp; }).map(function(ind) {
+      var rows = INDICATORS.filter(function(x) { return x.group === grp; }).map(function(ind) {
         return '<div class="ind-row' + (active.has(ind.id) ? ' on' : '') + '" data-id="' + ind.id + '">' +
-               '<div class="pill"></div>' +
-               '<span class="ind-label">' + ind.label + '</span>' +
-               '</div>';
+               '<div class="pill"></div><span class="ind-label">' + ind.label + '</span></div>';
       }).join('');
       return '<div class="ind-group"><div class="group-label">' + grp + '</div>' + rows + '</div>';
     }).join('');
@@ -385,19 +407,31 @@
     });
   }
 
-  /* ══ FULL REFRESH ══ */
-  function refresh() {
-    syncUi();
-    renderCharts();
-    saveSettings();
-  }
+  /* ══ EVENT LISTENERS ══ */
 
-  /* ══ BUTTONS ══ */
-  document.getElementById('dark-btn').addEventListener('click',    function() { theme = 'dark';             refresh(); });
-  document.getElementById('light-btn').addEventListener('click',   function() { theme = 'light';            refresh(); });
-  document.getElementById('toolbar-btn').addEventListener('click', function() { showToolbar = !showToolbar; refresh(); });
-  document.getElementById('legend-btn').addEventListener('click',  function() { showLegend  = !showLegend;  refresh(); });
+  // Theme — requires iframe rebuild (different colors baked into URL)
+  document.getElementById('dark-btn').addEventListener('click', function() {
+    theme = 'dark';
+    syncUi(); rebuildCharts(); saveSettings();
+  });
+  document.getElementById('light-btn').addEventListener('click', function() {
+    theme = 'light';
+    syncUi(); rebuildCharts(); saveSettings();
+  });
 
+  // Toolbar — CSS mask only, NO iframe rebuild
+  document.getElementById('toolbar-btn').addEventListener('click', function() {
+    showToolbar = !showToolbar;
+    syncUi(); applyGridClasses(); saveSettings();
+  });
+
+  // Legend — requires iframe rebuild (baked into URL), but note this is unavoidable
+  document.getElementById('legend-btn').addEventListener('click', function() {
+    showLegend = !showLegend;
+    syncUi(); rebuildCharts(); saveSettings();
+  });
+
+  // Indicators apply — requires iframe rebuild
   document.getElementById('ind-btn').addEventListener('click', function() {
     document.getElementById('ind-panel').classList.toggle('open');
   });
@@ -406,9 +440,10 @@
   });
   document.getElementById('apply-btn').addEventListener('click', function() {
     document.getElementById('ind-panel').classList.remove('open');
-    refresh();
+    syncUi(); rebuildCharts(); saveSettings();
   });
 
+  // Fullscreen
   document.getElementById('fs-btn').addEventListener('click', function() {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
     else document.exitFullscreen();
@@ -423,7 +458,7 @@
   tick();
   syncUi();
   buildPanel();
-  renderCharts();
+  rebuildCharts();
   syncFromCloud();
 </script>
 </body>
