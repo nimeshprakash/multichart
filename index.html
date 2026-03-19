@@ -276,7 +276,9 @@
   function makeUrl(sym, iv) {
     var dark = theme === 'dark';
 
-    // Build base params as a string manually to avoid any encoding issues
+    // Base params — values that need encoding use encodeURIComponent,
+    // everything else is safe ASCII. Brackets are kept LITERAL (not encoded)
+    // because TradingView parses studies[N] and studies_overrides[key] as arrays.
     var params = [
       'symbol='              + encodeURIComponent(sym),
       'interval='            + encodeURIComponent(iv),
@@ -292,17 +294,20 @@
       'hide_legend='         + (showLegend ? 'false' : 'true'),
       'backgroundColor='     + encodeURIComponent(dark ? 'rgba(19,23,34,1)' : 'rgba(255,255,255,1)'),
       'gridColor='           + encodeURIComponent(dark ? 'rgba(30,40,55,0.9)' : 'rgba(210,220,230,0.9)'),
-      // Hide default volume — bracket notation, raw (not double-encoded)
-      'studies_overrides%5Bvolume.volume.color.0%5D=rgba(0%2C0%2C0%2C0)',
-      'studies_overrides%5Bvolume.volume.color.1%5D=rgba(0%2C0%2C0%2C0)',
-      'studies_overrides%5Bvolume.volume%20ma.color%5D=rgba(0%2C0%2C0%2C0)',
-      'no_timeframes=false',
+      // Hide default volume — LITERAL brackets required by TradingView parser
+      'studies_overrides[volume.volume.color.0]=rgba(0,0,0,0)',
+      'studies_overrides[volume.volume.color.1]=rgba(0,0,0,0)',
+      'studies_overrides[volume.volume ma.color]=rgba(0,0,0,0)',
     ];
 
-    // Append active studies
+    // Append active studies as studies[0]=..., studies[1]=... (LITERAL brackets)
+    var i = 0;
     active.forEach(function(id) {
       var ind = INDICATORS.find(function(x) { return x.id === id; });
-      if (ind) params.push('studies=' + encodeURIComponent(ind.study));
+      if (ind) {
+        params.push('studies[' + i + ']=' + encodeURIComponent(ind.study));
+        i++;
+      }
     });
 
     return 'https://www.tradingview.com/widgetembed/?' + params.join('&');
