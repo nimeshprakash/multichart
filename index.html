@@ -9,7 +9,6 @@
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     html, body { width:100%; height:100%; background:#0b0f14; overflow:hidden; font-family:'Share Tech Mono',monospace; }
 
-    /* ── BAR ── */
     .bar {
       position:fixed; top:0; left:0; right:0; height:32px;
       background:#0b0f14; border-bottom:1px solid #1a2232;
@@ -51,7 +50,6 @@
     .fs-icon::before { top:0; left:0; border-width:1.5px 0 0 1.5px; }
     .fs-icon::after  { bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
 
-    /* ── GRID ── */
     .grid {
       position:fixed; top:32px; left:0; right:0; bottom:0;
       display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr);
@@ -68,7 +66,6 @@
       border:none; display:block;
     }
 
-    /* ── INDICATOR PANEL ── */
     .ind-panel {
       position:fixed; top:42px; right:10px; width:210px;
       background:#0f1419; border:1px solid #1a2232; border-radius:4px;
@@ -87,7 +84,7 @@
     .panel-close { cursor:pointer; color:#556070; font-size:15px; line-height:1; transition:color .1s; }
     .panel-close:hover { color:#f0b429; }
 
-    .panel-body { overflow-y:auto; }
+    .panel-body { overflow-y:auto; max-height:calc(100vh - 120px); }
     .panel-body::-webkit-scrollbar { width:3px; }
     .panel-body::-webkit-scrollbar-thumb { background:#1a2232; border-radius:2px; }
 
@@ -170,7 +167,7 @@
 <div class="grid" id="grid"></div>
 
 <script>
-  /* ── CONSTANTS ── */
+  /* ══ DATA ══ */
   const INDICATORS = [
     { id:'sma',      label:'SMA (20)',        group:'Trend',      study:'MASimple@tv-basicstudies' },
     { id:'ema',      label:'EMA (20)',        group:'Trend',      study:'MAExp@tv-basicstudies' },
@@ -201,109 +198,119 @@
 
   const BIN_ID  = '69bb82e8b7ec241ddc805616';
   const API_KEY = '$2a$10$HWO87P5U7tC328dcahcMg.va6krOTvvz9rylup0rM9ChckkhWQQgm';
-  const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+  const BIN_URL = 'https://api.jsonbin.io/v3/b/' + BIN_ID;
   const HDRS    = { 'Content-Type':'application/json', 'X-Master-Key':API_KEY };
 
-  /* ── STATE ── */
-  let theme       = 'dark';
-  let showToolbar = true;
-  let showLegend  = false;
-  let active      = new Set();
-  let saveTimer   = null;
+  /* ══ STATE — initialised from localStorage immediately (no async wait) ══ */
+  var theme       = 'dark';
+  var showToolbar = true;
+  var showLegend  = false;
+  var active      = new Set();
+  var saveTimer   = null;
 
-  /* ── CLOCK ── */
-  (function tick() {
-    const b = new Date(Date.now() + 3 * 3600000);
-    const p = n => String(n).padStart(2,'0');
-    document.getElementById('clk').textContent =
-      `${p(b.getUTCHours())}:${p(b.getUTCMinutes())}:${p(b.getUTCSeconds())} AST`;
-    setTimeout(tick, 1000);
+  // Load from localStorage instantly (sync, no network needed)
+  (function loadLocal() {
+    try {
+      var raw = localStorage.getItem('xau_dash');
+      if (raw) {
+        var d = JSON.parse(raw);
+        theme       = d.theme       != null ? d.theme       : 'dark';
+        showToolbar = d.showToolbar != null ? d.showToolbar : true;
+        showLegend  = d.showLegend  != null ? d.showLegend  : false;
+        active      = new Set(Array.isArray(d.active) ? d.active : []);
+      }
+    } catch(e) {}
   })();
 
-  /* ── SAVE DOT ── */
+  /* ══ CLOCK ══ */
+  function tick() {
+    var b = new Date(Date.now() + 3 * 3600000);
+    var p = function(n) { return String(n).padStart(2,'0'); };
+    document.getElementById('clk').textContent =
+      p(b.getUTCHours()) + ':' + p(b.getUTCMinutes()) + ':' + p(b.getUTCSeconds()) + ' AST';
+    setTimeout(tick, 1000);
+  }
+
+  /* ══ SAVE DOT ══ */
   function dotState(s) {
-    document.getElementById('save-dot').className = 'save-dot' + (s ? ' '+s : '');
+    document.getElementById('save-dot').className = 'save-dot' + (s ? ' ' + s : '');
   }
 
-  /* ── LOAD from JSONBin → localStorage fallback ── */
-  async function loadSettings() {
-    try {
-      const res  = await fetch(BIN_URL + '/latest', { headers: HDRS });
-      const json = await res.json();
-      applyRecord(json.record);
-      // mirror locally for offline use
-      try { localStorage.setItem('xau_dash', JSON.stringify(json.record)); } catch(_) {}
-    } catch(_) {
-      try {
-        const raw = localStorage.getItem('xau_dash');
-        if (raw) applyRecord(JSON.parse(raw));
-      } catch(_) {}
-    }
-  }
-
-  function applyRecord(d) {
-    if (!d) return;
-    theme       = d.theme       ?? 'dark';
-    showToolbar = d.showToolbar ?? true;
-    showLegend  = d.showLegend  ?? false;
-    active      = new Set(Array.isArray(d.active) ? d.active : []);
-  }
-
-  /* ── SAVE to JSONBin (debounced 800ms, snapshot captured inside timeout) ── */
+  /* ══ SAVE (localStorage instantly + JSONBin debounced) ══ */
   function saveSettings() {
+    var data = { theme:theme, showToolbar:showToolbar, showLegend:showLegend, active:[...active] };
+    try { localStorage.setItem('xau_dash', JSON.stringify(data)); } catch(e) {}
     dotState('saving');
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      // snapshot state at save time (not at call time)
-      const data = { theme, showToolbar, showLegend, active: [...active] };
-      try { localStorage.setItem('xau_dash', JSON.stringify(data)); } catch(_) {}
-      try {
-        await fetch(BIN_URL, { method:'PUT', headers:HDRS, body:JSON.stringify(data) });
-        dotState('saved');
-        setTimeout(() => dotState(''), 2000);
-      } catch(_) {
-        dotState(''); // failed silently — local copy still saved
-      }
+    saveTimer = setTimeout(function() {
+      var snap = { theme:theme, showToolbar:showToolbar, showLegend:showLegend, active:[...active] };
+      fetch(BIN_URL, { method:'PUT', headers:HDRS, body:JSON.stringify(snap) })
+        .then(function() { dotState('saved'); setTimeout(function(){ dotState(''); }, 2000); })
+        .catch(function() { dotState(''); });
     }, 800);
   }
 
-  /* ── BUILD CHART URL ── */
-  function makeUrl(sym, iv) {
-    const dark = theme === 'dark';
-    const p = new URLSearchParams({
-      symbol:              sym,
-      interval:            iv,
-      theme:               theme,
-      style:               '1',
-      locale:              'en',
-      toolbar_bg:          dark ? '#131722' : '#ffffff',
-      enable_publishing:   'false',
-      allow_symbol_change: 'false',
-      save_image:          'false',
-      hide_top_toolbar:    showToolbar ? 'false' : 'true',
-      hide_side_toolbar:   'true',
-      hide_legend:         showLegend  ? 'false' : 'true',
-      backgroundColor:     dark ? 'rgba(19,23,34,1)' : 'rgba(255,255,255,1)',
-      gridColor:           dark ? 'rgba(30,40,55,0.9)' : 'rgba(210,220,230,0.9)',
-    });
-
-    // Remove default volume pane using correct append() — avoids bracket-encoding bug
-    p.append('studies_overrides', 'volume.volume.color.0=rgba(0,0,0,0)');
-    p.append('studies_overrides', 'volume.volume.color.1=rgba(0,0,0,0)');
-    p.append('studies_overrides', 'volume.volume ma.color=rgba(0,0,0,0)');
-
-    // Append each active study as a separate repeated key
-    active.forEach(id => {
-      const ind = INDICATORS.find(x => x.id === id);
-      if (ind) p.append('studies', ind.study);
-    });
-
-    return `https://www.tradingview.com/widgetembed/?${p}`;
+  /* ══ SYNC from JSONBin in background (non-blocking) ══ */
+  function syncFromCloud() {
+    fetch(BIN_URL + '/latest', { headers:HDRS })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        var d = json.record;
+        if (!d) return;
+        theme       = d.theme       != null ? d.theme       : theme;
+        showToolbar = d.showToolbar != null ? d.showToolbar : showToolbar;
+        showLegend  = d.showLegend  != null ? d.showLegend  : showLegend;
+        active      = new Set(Array.isArray(d.active) ? d.active : [...active]);
+        try { localStorage.setItem('xau_dash', JSON.stringify(d)); } catch(e) {}
+        // Re-render with cloud settings
+        syncUi();
+        buildPanel();
+        renderCharts();
+        dotState('saved');
+        setTimeout(function(){ dotState(''); }, 2000);
+      })
+      .catch(function() {}); // fail silently — local state stays
   }
 
-  /* ── SYNC UI (buttons + bar class) ── */
+  /* ══ BUILD URL ══ */
+  function makeUrl(sym, iv) {
+    var dark = theme === 'dark';
+
+    // Build base params as a string manually to avoid any encoding issues
+    var params = [
+      'symbol='              + encodeURIComponent(sym),
+      'interval='            + encodeURIComponent(iv),
+      'theme='               + theme,
+      'style=1',
+      'locale=en',
+      'toolbar_bg='          + encodeURIComponent(dark ? '#131722' : '#ffffff'),
+      'enable_publishing=false',
+      'allow_symbol_change=false',
+      'save_image=false',
+      'hide_top_toolbar='    + (showToolbar ? 'false' : 'true'),
+      'hide_side_toolbar=true',
+      'hide_legend='         + (showLegend ? 'false' : 'true'),
+      'backgroundColor='     + encodeURIComponent(dark ? 'rgba(19,23,34,1)' : 'rgba(255,255,255,1)'),
+      'gridColor='           + encodeURIComponent(dark ? 'rgba(30,40,55,0.9)' : 'rgba(210,220,230,0.9)'),
+      // Hide default volume — bracket notation, raw (not double-encoded)
+      'studies_overrides%5Bvolume.volume.color.0%5D=rgba(0%2C0%2C0%2C0)',
+      'studies_overrides%5Bvolume.volume.color.1%5D=rgba(0%2C0%2C0%2C0)',
+      'studies_overrides%5Bvolume.volume%20ma.color%5D=rgba(0%2C0%2C0%2C0)',
+      'no_timeframes=false',
+    ];
+
+    // Append active studies
+    active.forEach(function(id) {
+      var ind = INDICATORS.find(function(x) { return x.id === id; });
+      if (ind) params.push('studies=' + encodeURIComponent(ind.study));
+    });
+
+    return 'https://www.tradingview.com/widgetembed/?' + params.join('&');
+  }
+
+  /* ══ SYNC UI BUTTONS ══ */
   function syncUi() {
-    document.getElementById('bar').className        = 'bar' + (theme === 'light' ? ' light' : '');
+    document.getElementById('bar').className = 'bar' + (theme === 'light' ? ' light' : '');
     document.getElementById('dark-btn').classList.toggle('active',    theme === 'dark');
     document.getElementById('light-btn').classList.toggle('active',   theme === 'light');
     document.getElementById('toolbar-btn').classList.toggle('active', showToolbar);
@@ -311,77 +318,81 @@
     document.getElementById('ind-panel').classList.toggle('light',    theme === 'light');
   }
 
-  /* ── BUILD INDICATOR PANEL (called once on init; rebuilds on loadSettings) ── */
+  /* ══ BUILD INDICATOR PANEL ══ */
   function buildPanel() {
-    const body   = document.getElementById('panel-body');
-    const groups = [...new Set(INDICATORS.map(i => i.group))];
-    body.innerHTML = groups.map(grp => `
-      <div class="ind-group">
-        <div class="group-label">${grp}</div>
-        ${INDICATORS.filter(i => i.group === grp).map(ind => `
-          <div class="ind-row${active.has(ind.id)?' on':''}" data-id="${ind.id}">
-            <div class="pill"></div>
-            <span class="ind-label">${ind.label}</span>
-          </div>`).join('')}
-      </div>`).join('');
+    var body   = document.getElementById('panel-body');
+    var groups = [];
+    INDICATORS.forEach(function(i) { if (groups.indexOf(i.group) < 0) groups.push(i.group); });
 
-    body.querySelectorAll('.ind-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const id = row.dataset.id;
+    body.innerHTML = groups.map(function(grp) {
+      var rows = INDICATORS.filter(function(i) { return i.group === grp; }).map(function(ind) {
+        return '<div class="ind-row' + (active.has(ind.id) ? ' on' : '') + '" data-id="' + ind.id + '">' +
+               '<div class="pill"></div>' +
+               '<span class="ind-label">' + ind.label + '</span>' +
+               '</div>';
+      }).join('');
+      return '<div class="ind-group"><div class="group-label">' + grp + '</div>' + rows + '</div>';
+    }).join('');
+
+    body.querySelectorAll('.ind-row').forEach(function(row) {
+      row.addEventListener('click', function() {
+        var id = row.dataset.id;
         if (active.has(id)) { active.delete(id); row.classList.remove('on'); }
         else                 { active.add(id);    row.classList.add('on');    }
       });
     });
   }
 
-  /* ── RENDER CHARTS ── */
+  /* ══ RENDER CHARTS ══ */
   function renderCharts() {
-    const grid = document.getElementById('grid');
+    var grid = document.getElementById('grid');
     grid.className = 'grid' + (theme === 'light' ? ' light' : '');
-    grid.innerHTML = CHARTS.map(c =>
-      `<div class="cell"><iframe src="${makeUrl(c.sym, c.iv)}"
-        allowtransparency="false" scrolling="no" frameborder="0"></iframe></div>`
-    ).join('');
+    grid.innerHTML = CHARTS.map(function(c) {
+      return '<div class="cell"><iframe src="' + makeUrl(c.sym, c.iv) + '" ' +
+             'allowtransparency="false" scrolling="no" frameborder="0"></iframe></div>';
+    }).join('');
   }
 
-  /* ── FULL REFRESH (UI + charts + save) ── */
+  /* ══ FULL REFRESH ══ */
   function refresh() {
     syncUi();
     renderCharts();
     saveSettings();
   }
 
-  /* ── EVENT LISTENERS ── */
-  document.getElementById('dark-btn').addEventListener('click',    () => { theme = 'dark';              refresh(); });
-  document.getElementById('light-btn').addEventListener('click',   () => { theme = 'light';             refresh(); });
-  document.getElementById('toolbar-btn').addEventListener('click', () => { showToolbar = !showToolbar;  refresh(); });
-  document.getElementById('legend-btn').addEventListener('click',  () => { showLegend  = !showLegend;   refresh(); });
+  /* ══ EVENT LISTENERS ══ */
+  document.getElementById('dark-btn').addEventListener('click',    function() { theme = 'dark';             refresh(); });
+  document.getElementById('light-btn').addEventListener('click',   function() { theme = 'light';            refresh(); });
+  document.getElementById('toolbar-btn').addEventListener('click', function() { showToolbar = !showToolbar; refresh(); });
+  document.getElementById('legend-btn').addEventListener('click',  function() { showLegend  = !showLegend;  refresh(); });
 
-  document.getElementById('ind-btn').addEventListener('click',   () => document.getElementById('ind-panel').classList.toggle('open'));
-  document.getElementById('ind-close').addEventListener('click', () => document.getElementById('ind-panel').classList.remove('open'));
-  document.getElementById('apply-btn').addEventListener('click', () => {
+  document.getElementById('ind-btn').addEventListener('click', function() {
+    document.getElementById('ind-panel').classList.toggle('open');
+  });
+  document.getElementById('ind-close').addEventListener('click', function() {
     document.getElementById('ind-panel').classList.remove('open');
-    refresh(); // applies active indicators to all charts + saves
+  });
+  document.getElementById('apply-btn').addEventListener('click', function() {
+    document.getElementById('ind-panel').classList.remove('open');
+    refresh();
   });
 
-  document.getElementById('fs-btn').addEventListener('click', () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  document.getElementById('fs-btn').addEventListener('click', function() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
     else document.exitFullscreen();
   });
-  document.addEventListener('fullscreenchange', () => {
-    const on = !!document.fullscreenElement;
+  document.addEventListener('fullscreenchange', function() {
+    var on = !!document.fullscreenElement;
     document.body.classList.toggle('fullscreen', on);
-    document.getElementById('fs-btn').innerHTML = `<span class="fs-icon"></span>${on?'Exit':'Full'}`;
+    document.getElementById('fs-btn').innerHTML = '<span class="fs-icon"></span>' + (on ? 'Exit' : 'Full');
   });
 
-  /* ── INIT ── */
-  (async () => {
-    await loadSettings(); // fetch from JSONBin (or localStorage fallback)
-    syncUi();             // apply loaded state to buttons
-    buildPanel();         // build indicator toggles with correct on/off state
-    renderCharts();       // render all 6 charts with loaded settings
-    // no saveSettings() here — nothing changed, don't write on startup
-  })();
+  /* ══ INIT — render immediately, sync cloud in background ══ */
+  tick();
+  syncUi();
+  buildPanel();
+  renderCharts();
+  syncFromCloud(); // updates if cloud has newer settings, re-renders if needed
 </script>
 </body>
 </html>
