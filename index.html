@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>XAU/USD</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+  <script src="https://s3.tradingview.com/tv.js"></script>
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     html, body { width:100%; height:100%; background:#0b0f14; overflow:hidden; font-family:'Share Tech Mono',monospace; }
 
-    /* ── BAR ── */
+    /* ── TOP BAR ── */
     .bar {
       position:fixed; top:0; left:0; right:0; height:32px;
       background:#0b0f14; border-bottom:1px solid #1a2232;
@@ -58,33 +59,32 @@
     body.fullscreen .grid { top:0; }
 
     /* ── CELL ── */
-    .cell { position:relative; background:#131722; overflow:hidden; }
+    .cell {
+      position:relative; overflow:hidden;
+      background:#131722;
+    }
     .grid.light .cell { background:#ffffff; }
 
-    .cell iframe {
-      position:absolute; inset:0;
-      width:100%; height:100%;
-      border:none; display:block;
+    /*
+      The tv.js widget renders an iframe inside the container div.
+      We clip the LEFT side to hide the drawing toolbar (~45px wide),
+      and clip the TOP to hide the toolbar when needed (~37px tall).
+      This avoids rebuilding the widget on toolbar toggle.
+    */
+    .cell .tv-container {
+      position:absolute;
+      /* clip left sidebar: shift left and widen */
+      left: -46px;
+      top:  0;
+      width:  calc(100% + 46px);
+      height: 100%;
+      transition: top 0.1s, height 0.1s;
     }
 
-    /*
-      TOOLBAR MASK: a thin overlay that covers only the TradingView top toolbar row
-      (~36px tall). When .hide-toolbar is on the grid, this mask covers it.
-      The chart itself is nudged up so it fills the space.
-    */
-    .cell .toolbar-mask {
-      display:none;
-      position:absolute; top:0; left:0; right:0;
-      height:38px;
-      background:inherit;  /* matches cell bg */
-      z-index:10;
-      pointer-events:none;
-    }
-    .grid.hide-toolbar .cell .toolbar-mask { display:block; }
-    /* Shift iframe up to reclaim toolbar space */
-    .grid.hide-toolbar .cell iframe {
-      top:-38px;
-      height:calc(100% + 38px);
+    /* Hide top toolbar via CSS shift — no widget rebuild needed */
+    .grid.hide-toolbar .cell .tv-container {
+      top:    -38px;
+      height: calc(100% + 38px);
     }
 
     /* ── INDICATOR PANEL ── */
@@ -189,7 +189,7 @@
 <div class="grid" id="grid"></div>
 
 <script>
-  /* ══ CONFIG ══ */
+  /* ══ CHART CONFIG ══ */
   var CHARTS = [
     { sym:'OANDA:XAUUSD',    iv:'60'  },
     { sym:'TVC:GOLD',        iv:'240' },
@@ -229,11 +229,11 @@
   var active      = new Set();
   var saveTimer   = null;
 
-  /* Restore from localStorage instantly */
+  /* Restore from localStorage immediately — no network wait */
   try {
-    var _s = localStorage.getItem('xau_dash');
-    if (_s) {
-      var _d = JSON.parse(_s);
+    var _raw = localStorage.getItem('xau_dash');
+    if (_raw) {
+      var _d = JSON.parse(_raw);
       theme       = _d.theme       != null ? _d.theme       : 'dark';
       showToolbar = _d.showToolbar != null ? _d.showToolbar : true;
       showLegend  = _d.showLegend  != null ? _d.showLegend  : false;
@@ -241,7 +241,7 @@
     }
   } catch(e) {}
 
-  /* ══ CLOCK ══ */
+  /* ══ CLOCK (Bahrain UTC+3) ══ */
   function tick() {
     var b = new Date(Date.now() + 3 * 3600000);
     var p = function(n) { return String(n).padStart(2,'0'); };
@@ -255,7 +255,7 @@
     document.getElementById('save-dot').className = 'save-dot' + (s ? ' '+s : '');
   }
 
-  /* ══ SAVE ══ */
+  /* ══ SAVE SETTINGS ══ */
   function saveSettings() {
     var data = { theme:theme, showToolbar:showToolbar, showLegend:showLegend, active:[...active] };
     try { localStorage.setItem('xau_dash', JSON.stringify(data)); } catch(e) {}
@@ -269,108 +269,126 @@
     }, 800);
   }
 
-  /* ══ SYNC FROM CLOUD (background, non-blocking) ══ */
+  /* ══ SYNC FROM CLOUD
+     Only overwrite if cloud data differs — prevents spurious rebuilds ══ */
   function syncFromCloud() {
     fetch(BIN_URL + '/latest', { headers:HDRS })
       .then(function(r) { return r.json(); })
       .then(function(json) {
         var d = json.record;
         if (!d) return;
-        theme       = d.theme       != null ? d.theme       : theme;
-        showToolbar = d.showToolbar != null ? d.showToolbar : showToolbar;
-        showLegend  = d.showLegend  != null ? d.showLegend  : showLegend;
-        active      = new Set(Array.isArray(d.active) ? d.active : [...active]);
+        var newTheme   = d.theme       != null ? d.theme       : theme;
+        var newToolbar = d.showToolbar != null ? d.showToolbar : showToolbar;
+        var newLegend  = d.showLegend  != null ? d.showLegend  : showLegend;
+        var newActive  = Array.isArray(d.active) ? d.active : [...active];
+
+        var changed =
+          newTheme   !== theme ||
+          newToolbar !== showToolbar ||
+          newLegend  !== showLegend  ||
+          JSON.stringify(newActive.sort()) !== JSON.stringify([...active].sort());
+
+        if (!changed) return; // nothing to do
+
+        theme       = newTheme;
+        showToolbar = newToolbar;
+        showLegend  = newLegend;
+        active      = new Set(newActive);
         try { localStorage.setItem('xau_dash', JSON.stringify(d)); } catch(e) {}
         syncUi();
         buildPanel();
-        rebuildCharts();  // only rebuild on initial cloud load
+        rebuildCharts();
       })
       .catch(function() {});
   }
 
-  /* ══ BUILD IFRAME URL ══ */
-  function makeUrl(sym, iv) {
-    var dark = theme === 'dark';
-
-    // Collect active studies
-    var studyParts = [];
-    var i = 0;
-    active.forEach(function(id) {
-      var ind = INDICATORS.find(function(x) { return x.id === id; });
-      if (ind) {
-        studyParts.push('studies[' + i + ']=' + encodeURIComponent(ind.study));
-        i++;
-      }
-    });
-
-    var parts = [
-      'symbol='           + encodeURIComponent(sym),
-      'interval='         + iv,
-      'theme='            + theme,
-      'style=1',
-      'locale=en',
-      'timezone=Asia/Bahrain',
-      'toolbar_bg='       + encodeURIComponent(dark ? '#131722' : '#ffffff'),
-      'enable_publishing=false',
-      'allow_symbol_change=false',
-      'save_image=false',
-      'hide_top_toolbar=false',     // always load with toolbar — CSS mask hides it if needed
-      'hide_side_toolbar=true',
-      'hide_legend='      + (showLegend ? 'false' : 'true'),
-      'backgroundColor='  + encodeURIComponent(dark ? 'rgba(19,23,34,1)' : 'rgba(255,255,255,1)'),
-      'gridColor='        + encodeURIComponent(dark ? 'rgba(30,40,55,0.9)' : 'rgba(210,220,230,0.9)'),
-      // Hide default volume via literal bracket params
-      'studies_overrides[volume.volume.color.0]=rgba(0,0,0,0)',
-      'studies_overrides[volume.volume.color.1]=rgba(0,0,0,0)',
-      'studies_overrides[volume.volume ma.color]=rgba(0,0,0,0)',
-    ].concat(studyParts);
-
-    return 'https://www.tradingview.com/widgetembed/?' + parts.join('&');
-  }
-
-  /* ══ BUILD CHARTS (full rebuild — only called on init, theme change, or indicator apply) ══ */
+  /* ══ BUILD TV.JS WIDGETS
+     Uses the TradingView JS Widget API which properly supports:
+     - studies[] array injection
+     - disabled_features for volume removal
+     - theme, legend, toolbar toggles
+  ══ */
   function rebuildCharts() {
     var grid = document.getElementById('grid');
+    grid.className = 'grid' +
+      (theme === 'light' ? ' light' : '') +
+      (!showToolbar ? ' hide-toolbar' : '');
+
+    /* Collect active study IDs */
+    var studyList = [];
+    active.forEach(function(id) {
+      var ind = INDICATORS.find(function(x) { return x.id === id; });
+      if (ind) studyList.push(ind.study);
+    });
+
+    /* Clear existing widgets */
     grid.innerHTML = '';
 
     CHARTS.forEach(function(c, i) {
+      /* Cell wrapper */
       var cell = document.createElement('div');
       cell.className = 'cell';
 
-      // Toolbar mask overlay (CSS hides toolbar without reloading iframe)
-      var mask = document.createElement('div');
-      mask.className = 'toolbar-mask';
-      mask.style.background = theme === 'dark' ? '#131722' : '#ffffff';
+      /* Container div that gets shifted by CSS to clip sidebars */
+      var container = document.createElement('div');
+      container.className = 'tv-container';
+      container.id = 'tv_cont_' + i;
 
-      var iframe = document.createElement('iframe');
-      iframe.src = makeUrl(c.sym, c.iv);
-      iframe.setAttribute('allowtransparency', 'false');
-      iframe.setAttribute('scrolling', 'no');
-      iframe.setAttribute('frameborder', '0');
-
-      cell.appendChild(mask);
-      cell.appendChild(iframe);
+      cell.appendChild(container);
       grid.appendChild(cell);
-    });
 
-    // Apply grid-level classes
-    applyGridClasses();
+      /* Create TradingView widget — only this API supports studies natively */
+      new TradingView.widget({
+        autosize:            true,
+        symbol:              c.sym,
+        interval:            c.iv,
+        timezone:            'Asia/Bahrain',
+        theme:               theme,
+        style:               '1',
+        locale:              'en',
+        toolbar_bg:          theme === 'dark' ? '#131722' : '#ffffff',
+        enable_publishing:   false,
+        allow_symbol_change: false,
+        save_image:          false,
+        hide_legend:         !showLegend,
+        /* Side toolbar: hidden via CSS clip (left:-46px), not this param */
+        hide_side_toolbar:   false,
+        /* Top toolbar: always loaded, hidden via CSS shift when needed */
+        hide_top_toolbar:    false,
+        container_id:        'tv_cont_' + i,
+        /* Disable volume pane — only works via disabled_features in widget API */
+        disabled_features: [
+          'create_volume_indicator_by_default',
+          'volume_force_overlay',
+          'header_symbol_search',
+          'header_compare',
+          'header_undo_redo',
+        ],
+        enabled_features: [
+          'hide_last_na_study_output',
+          'dont_show_boolean_study_arguments',
+        ],
+        /* Active studies — ONLY works with widget API, not iframe URL */
+        studies: studyList,
+        /* Candle colors */
+        overrides: {
+          'mainSeriesProperties.candleStyle.upColor':          '#26a69a',
+          'mainSeriesProperties.candleStyle.downColor':        '#ef5350',
+          'mainSeriesProperties.candleStyle.borderUpColor':    '#26a69a',
+          'mainSeriesProperties.candleStyle.borderDownColor':  '#ef5350',
+          'mainSeriesProperties.candleStyle.wickUpColor':      '#26a69a',
+          'mainSeriesProperties.candleStyle.wickDownColor':    '#ef5350',
+        },
+      });
+    });
   }
 
-  /* ══ APPLY GRID CLASSES — toolbar/legend/theme WITHOUT rebuilding iframes ══ */
+  /* ══ APPLY GRID CLASSES (toolbar/theme) WITHOUT rebuilding widgets ══ */
   function applyGridClasses() {
     var grid = document.getElementById('grid');
-    // theme
-    if (theme === 'light') grid.classList.add('light');
-    else                   grid.classList.remove('light');
-    // toolbar mask
-    if (!showToolbar) grid.classList.add('hide-toolbar');
-    else              grid.classList.remove('hide-toolbar');
-    // update mask bg color to match theme
-    var masks = grid.querySelectorAll('.toolbar-mask');
-    masks.forEach(function(m) {
-      m.style.background = theme === 'dark' ? '#131722' : '#ffffff';
-    });
+    grid.className = 'grid' +
+      (theme === 'light' ? ' light' : '') +
+      (!showToolbar ? ' hide-toolbar' : '');
   }
 
   /* ══ SYNC UI BUTTONS ══ */
@@ -409,41 +427,38 @@
 
   /* ══ EVENT LISTENERS ══ */
 
-  // Theme — requires iframe rebuild (different colors baked into URL)
+  /* Theme → rebuild needed (colors baked into widget config) */
   document.getElementById('dark-btn').addEventListener('click', function() {
-    theme = 'dark';
-    syncUi(); rebuildCharts(); saveSettings();
+    theme = 'dark'; syncUi(); rebuildCharts(); saveSettings();
   });
   document.getElementById('light-btn').addEventListener('click', function() {
-    theme = 'light';
-    syncUi(); rebuildCharts(); saveSettings();
+    theme = 'light'; syncUi(); rebuildCharts(); saveSettings();
   });
 
-  // Toolbar — CSS mask only, NO iframe rebuild
+  /* Toolbar → CSS class only, no widget rebuild */
   document.getElementById('toolbar-btn').addEventListener('click', function() {
-    showToolbar = !showToolbar;
-    syncUi(); applyGridClasses(); saveSettings();
+    showToolbar = !showToolbar; syncUi(); applyGridClasses(); saveSettings();
   });
 
-  // Legend — requires iframe rebuild (baked into URL), but note this is unavoidable
+  /* Legend → rebuild needed (baked into widget config) */
   document.getElementById('legend-btn').addEventListener('click', function() {
-    showLegend = !showLegend;
-    syncUi(); rebuildCharts(); saveSettings();
+    showLegend = !showLegend; syncUi(); rebuildCharts(); saveSettings();
   });
 
-  // Indicators apply — requires iframe rebuild
+  /* Indicators panel */
   document.getElementById('ind-btn').addEventListener('click', function() {
     document.getElementById('ind-panel').classList.toggle('open');
   });
   document.getElementById('ind-close').addEventListener('click', function() {
     document.getElementById('ind-panel').classList.remove('open');
   });
+  /* Apply → rebuild with new studies */
   document.getElementById('apply-btn').addEventListener('click', function() {
     document.getElementById('ind-panel').classList.remove('open');
     syncUi(); rebuildCharts(); saveSettings();
   });
 
-  // Fullscreen
+  /* Fullscreen */
   document.getElementById('fs-btn').addEventListener('click', function() {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
     else document.exitFullscreen();
@@ -454,7 +469,7 @@
     document.getElementById('fs-btn').innerHTML = '<span class="fs-icon"></span>' + (on ? 'Exit' : 'Full');
   });
 
-  /* ══ INIT ══ */
+  /* ══ INIT — render immediately, sync cloud only if data changed ══ */
   tick();
   syncUi();
   buildPanel();
