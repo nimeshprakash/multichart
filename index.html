@@ -191,12 +191,12 @@
 <script>
   /* ══ CHART CONFIG ══ */
   var CHARTS = [
-    { sym:'FOREXCOM:XAUUSD',    iv:'1'  },
-    { sym:'FOREXCOM:XAUUSD',        iv:'5' },
+    { sym:'OANDA:XAUUSD',    iv:'60'  },
+    { sym:'TVC:GOLD',        iv:'240' },
     { sym:'FOREXCOM:XAUUSD', iv:'15'  },
-    { sym:'FOREXCOM:XAUUSD',    iv:'60'   },
-    { sym:'FOREXCOM:XAUUSD',        iv:'240'   },
-    { sym:'FOREXCOM:XAUUSD', iv:'D'   },
+    { sym:'OANDA:XAUUSD',    iv:'D'   },
+    { sym:'TVC:GOLD',        iv:'5'   },
+    { sym:'FOREXCOM:XAUUSD', iv:'W'   },
   ];
 
   var INDICATORS = [
@@ -270,30 +270,28 @@
   }
 
   /* ══ SYNC FROM CLOUD
-     Only overwrite if cloud data differs — prevents spurious rebuilds ══ */
+     Only reads from cloud when localStorage has NO saved data yet —
+     i.e. first visit on a new device. After that, localStorage is
+     the source of truth and cloud is write-only from this device. ══ */
+  var _hasLocalData = false;
+  try { _hasLocalData = !!localStorage.getItem('xau_dash'); } catch(e) {}
+
   function syncFromCloud() {
+    if (_hasLocalData) {
+      // Local data exists — just push it to cloud to keep in sync, don't read back
+      saveSettings();
+      return;
+    }
+    // No local data — first time on this device, pull from cloud
     fetch(BIN_URL + '/latest', { headers:HDRS })
       .then(function(r) { return r.json(); })
       .then(function(json) {
         var d = json.record;
         if (!d) return;
-        var newTheme   = d.theme       != null ? d.theme       : theme;
-        var newToolbar = d.showToolbar != null ? d.showToolbar : showToolbar;
-        var newLegend  = d.showLegend  != null ? d.showLegend  : showLegend;
-        var newActive  = Array.isArray(d.active) ? d.active : [...active];
-
-        var changed =
-          newTheme   !== theme ||
-          newToolbar !== showToolbar ||
-          newLegend  !== showLegend  ||
-          JSON.stringify(newActive.sort()) !== JSON.stringify([...active].sort());
-
-        if (!changed) return; // nothing to do
-
-        theme       = newTheme;
-        showToolbar = newToolbar;
-        showLegend  = newLegend;
-        active      = new Set(newActive);
+        theme       = d.theme       != null ? d.theme       : theme;
+        showToolbar = d.showToolbar != null ? d.showToolbar : showToolbar;
+        showLegend  = d.showLegend  != null ? d.showLegend  : showLegend;
+        active      = new Set(Array.isArray(d.active) ? d.active : []);
         try { localStorage.setItem('xau_dash', JSON.stringify(d)); } catch(e) {}
         syncUi();
         buildPanel();
